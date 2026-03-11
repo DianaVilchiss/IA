@@ -3,15 +3,13 @@ from flask import Flask, render_template, request, jsonify
 import numpy as np
 import joblib
 import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 app = Flask(__name__)
 
-models = {
-    'scaler': None,
-    'kmeans': None,
-    'pca': None,
-    'df': None
-}
+models = {'scaler': None, 'kmeans': None, 'pca': None, 'df': None, 'df_cleaned': None}
 
 @app.route('/')
 def index():
@@ -20,74 +18,55 @@ def index():
 @app.route('/upload_models', methods=['POST'])
 def upload_models():
     try:
-        f_scaler = request.files.get('scaler')
-        f_kmeans = request.files.get('kmeans')
-        f_pca = request.files.get('pca')
-        f_csv = request.files.get('dataset')
-
-        if not all([f_scaler, f_kmeans, f_pca, f_csv]):
-            return jsonify({"success": False, "error": "Faltan archivos en el formulario"})
-
-        models['scaler'] = joblib.load(f_scaler)
-        models['kmeans'] = joblib.load(f_kmeans)
-        models['pca'] = joblib.load(f_pca)
-        models['df'] = pd.read_csv(f_csv, encoding="latin-1")
-
+        models['scaler'] = joblib.load(request.files.get('scaler'))
+        models['kmeans'] = joblib.load(request.files['kmeans'])
+        models['pca'] = joblib.load(request.files['pca'])
+        
+        raw_df = pd.read_csv(request.files['dataset'], encoding="latin-1")
+        models['df'] = raw_df
+        
+        df_c = raw_df.copy()
+        df_drop = ['ADDRESSLINE1', 'ADDRESSLINE2', 'POSTALCODE', 'CITY', 'TERRITORY', 
+                   'PHONE', 'STATE', 'CONTACTFIRSTNAME', 'CONTACTLASTNAME', 
+                   'CUSTOMERNAME', 'ORDERNUMBER', 'STATUS']
+        df_c.drop(columns=[c for c in df_drop if c in df_c.columns], inplace=True)
+        
+        models['df_cleaned'] = df_c.select_dtypes(include=[np.number]).dropna()
         return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    if models['kmeans'] is None:
-        return jsonify({"success": False, "error": "Primero debes subir los modelos"})
-    
-    try:
-        data = request.get_json()
-        features = np.array(data['features']).reshape(1, -1)
-        features_scaled = models['scaler'].transform(features)
-        cluster = models['kmeans'].predict(features_scaled)
-        coords = models['pca'].transform(features_scaled)
-
-        return jsonify({
-            "success": True,
-            "cluster": int(cluster[0]),
-            "pca1": float(coords[0][0]),
-            "pca2": float(coords[0][1])
-        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
 @app.route('/dataset_stats')
 def dataset_stats():
-    if models['df'] is None:
-        return jsonify({"success": False, "error": "No hay datos cargados"})
+    if models['df'] is None: return jsonify({"success": False})
     
     df = models['df']
-    cols = ["SALES", "QUANTITYORDERED", "PRICEEACH", "MSRP"]
-    corr = df[cols].corr().values.tolist()
- 
-    cluster_counts = [0, 0, 0, 0]
-    for v in df["SALES"]:
-        if v < 2000: cluster_counts[0] += 1
-        elif v < 5000: cluster_counts[1] += 1
-        elif v < 9000: cluster_counts[2] += 1
-        else: cluster_counts[3] += 1
+    df_num = models['df_cleaned']
+    
+    # PCA 3D
+    sc = StandardScaler()
+    scaled = sc.fit_transform(df_num)
+    pca_res = PCA(n_components=3).fit_transform(scaled)
+    
+    # WCSS
+    wcss = []
+    sample = df_num.sample(n=min(1000, len(df_num)))
+    for i in range(1, 11):
+        km = KMeans(n_clusters=i, n_init=10, random_state=42).fit(sample)
+        wcss.append(float(km.inertia_))
 
     return jsonify({
         "success": True,
-        "sales_hist": df["SALES"].tolist(),
-        "corr_matrix": corr,
-        "corr_labels": cols,
-        "cluster_labels": ["Bajo", "Medio", "Alto", "Premium"],
-        "cluster_counts": cluster_counts,
-        "total_rows": int(len(df)),
-        "avg_sales": float(df["SALES"].mean()),
-        "max_sales": float(df["SALES"].max()),
-        "min_sales": float(df["SALES"].min()),
-        "std_sales": float(df["SALES"].std()),
-        "null_count": int(df.isnull().sum().sum()) 
+        "pca_3d": {"x": pca_res[:,0].tolist(), "y": pca_res[:,1].tolist(), "z": pca_res[:,2].tolist()},
+        "wcss": wcss,
+        "sales_month": df.groupby(pd.to_datetime(df['ORDERDATE']).dt.month)['SALES'].sum().tolist(),
+        "countries": df['COUNTRY'].value_counts().index.tolist(),
+        "country_counts": df['COUNTRY'].value_counts().tolist(),
+        "table": df.head(12).fillna('').to_dict('records'),
+        "corr": df_num.corr().values.tolist(),
+        "corr_labels": df_num.columns.tolist()
     })
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
