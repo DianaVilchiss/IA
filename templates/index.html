@@ -2,254 +2,234 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <title>Marketing AI Dashboard - Diana Vilchis</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <title>AI Dashboard</title>
+
+    <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+
     <style>
-      :root {
-        --primary: #6c5ce7;
-        --dark: #2c3e50;
-        --bg: #f4f7f6;
-      }
       body {
-        font-family: "Segoe UI", sans-serif;
-        background: var(--bg);
+        font-family: "Segoe UI";
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
         margin: 0;
-        padding: 20px;
-      }
-      .container {
-        max-width: 1300px;
-        margin: auto;
-      }
-      header {
-        background: var(--dark);
-        color: white;
-        padding: 20px;
-        border-radius: 15px;
-        text-align: center;
-        margin-bottom: 25px;
-      }
-      .upload-card {
-        background: white;
-        padding: 25px;
-        border-radius: 15px;
-        border: 2px dashed var(--primary);
-        margin-bottom: 30px;
-      }
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 20px;
-      }
-      .full {
-        grid-column: span 2;
-      }
-      .panel {
-        background: white;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-        min-height: 450px;
-      }
-      button {
-        background: var(--primary);
-        color: white;
-        border: none;
-        padding: 12px;
-        border-radius: 8px;
-        font-weight: bold;
-        cursor: pointer;
-        width: 100%;
       }
 
-      .table-wrapper {
-        overflow-x: auto;
-        margin-top: 15px;
-        border-radius: 10px;
+      .container {
+        width: 95%;
+        margin: auto;
+        padding: 20px;
       }
+
+      h1 {
+        text-align: center;
+      }
+
+      .card {
+        background: white;
+        color: black;
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 20px;
+      }
+
+      .buttons {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+      }
+
+      button {
+        padding: 12px;
+        border: none;
+        border-radius: 10px;
+        background: #6c5ce7;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #4834d4;
+      }
+
+      #chart {
+        width: 100%;
+        height: 600px;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.85em;
       }
+
       th {
-        background: var(--dark);
+        background: #6c5ce7;
         color: white;
-        padding: 10px;
-        text-align: left;
-      }
-      td {
         padding: 8px;
-        border-bottom: 1px solid #eee;
       }
-      #main-content {
-        display: none;
+
+      td {
+        padding: 6px;
+        border-bottom: 1px solid #ddd;
       }
     </style>
   </head>
+
   <body>
     <div class="container">
-      <header>
-        <h1>Marketing IA</h1>
-        <p>Segmentación Avanzada y Correlación de Variables</p>
-      </header>
+      <h1>Marketing AI Dashboard</h1>
 
-      <div class="upload-card" id="upload-box">
-        <div
-          style="
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 15px;
-          "
-        >
-          <input type="file" id="f1" /><input type="file" id="f2" />
-          <input type="file" id="f3" /><input type="file" id="f4" />
-        </div>
-        <button onclick="init()">Procesar Análisis Completo</button>
+      <div class="card">
+        <input type="file" id="dataset" />
+        <button onclick="upload()">Cargar Dataset</button>
       </div>
 
-      <div id="main-content">
-        <div class="grid">
-          <div class="panel full" id="pca-3d" style="height: 600px"></div>
+      <div class="card buttons" id="controls" style="display: none">
+        <button onclick="loadGraph('timeline')">Línea de tiempo</button>
+        <button onclick="loadGraph('pca3d')">PCA 3D</button>
+        <button onclick="loadGraph('clusters')">Clusters</button>
+        <button onclick="loadGraph('elbow')">Método Codo</button>
 
-          <div class="panel" id="time-chart"></div>
-          <div class="panel" id="geo-chart"></div>
+        <button onclick="loadGraph('countries')">Países</button>
+        <button onclick="loadGraph('product')">Productos</button>
+        <button onclick="loadGraph('corr')">Correlación</button>
+        <button onclick="loadGraph('scatter')">Scatter Matrix</button>
+        <button onclick="loadGraph('dataset')">Dataset</button>
+      </div>
 
-          <div class="panel" id="elbow-chart"></div>
-
-          <div class="panel" id="corr-matrix"></div>
-
-          <div class="panel full">
-            <h3>Vista Previa de Datos Procesados</h3>
-            <div class="table-wrapper" id="dataset-table"></div>
-          </div>
-        </div>
+      <div class="card">
+        <div id="chart"></div>
+        <div id="table"></div>
       </div>
     </div>
 
     <script>
-      async function init() {
-        const fd = new FormData();
-        fd.append("scaler", document.getElementById("f1").files[0]);
-        fd.append("kmeans", document.getElementById("f2").files[0]);
-        fd.append("pca", document.getElementById("f3").files[0]);
-        fd.append("dataset", document.getElementById("f4").files[0]);
+      async function upload() {
+        let fd = new FormData();
+        fd.append("dataset", document.getElementById("dataset").files[0]);
 
-        const res = await fetch("/upload_models", { method: "POST", body: fd });
-        if ((await res.json()).success) {
-          document.getElementById("upload-box").style.display = "none";
-          document.getElementById("main-content").style.display = "block";
-          loadStats();
+        let res = await fetch("/upload", { method: "POST", body: fd });
+        let data = await res.json();
+
+        if (data.success) {
+          document.getElementById("controls").style.display = "grid";
         }
       }
 
-      async function loadStats() {
-        const res = await fetch("/dataset_stats");
-        const d = await res.json();
+      async function loadGraph(type) {
+        document.getElementById("table").innerHTML = "";
 
-        // PCA 3D con Plasma
-        Plotly.newPlot(
-          "pca-3d",
-          [
+        let res = await fetch("/graph", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: type }),
+        });
+
+        let d = await res.json();
+
+        // -------- GRAFICAS --------
+
+        if (type === "timeline") {
+          Plotly.newPlot("chart", [
             {
-              x: d.pca_3d.x,
-              y: d.pca_3d.y,
-              z: d.pca_3d.z,
+              x: d.x,
+              y: d.y,
+              type: "scatter",
+              line: { color: "#6c5ce7" },
+            },
+          ]);
+        } else if (type === "pca3d") {
+          Plotly.newPlot("chart", [
+            {
+              x: d.x,
+              y: d.y,
+              z: d.z,
               mode: "markers",
               type: "scatter3d",
               marker: {
                 size: 4,
-                color: d.pca_3d.z,
-                colorscale: "Plasma",
-                opacity: 0.8,
+                color: d.color,
+                colorscale: "Rainbow",
               },
             },
-          ],
-          { title: "Estructura PCA" }
-        );
-
-        // Ventas Mes
-        Plotly.newPlot(
-          "time-chart",
-          [
+          ]);
+        } else if (type === "clusters") {
+          Plotly.newPlot("chart", [
             {
-              x: [
-                "Ene",
-                "Feb",
-                "Mar",
-                "Abr",
-                "May",
-                "Jun",
-                "Jul",
-                "Ago",
-                "Sep",
-                "Oct",
-                "Nov",
-                "Dic",
-              ],
-              y: d.sales_month,
+              x: d.x,
+              y: d.y,
+              mode: "markers",
               type: "scatter",
-              mode: "lines+markers",
-              line: { color: "#6c5ce7" },
+              marker: {
+                color: d.labels,
+                colorscale: "Viridis",
+              },
             },
-          ],
-          { title: "Ventas Mensuales" }
-        );
-
-        // Barras País
-        Plotly.newPlot(
-          "geo-chart",
-          [
+          ]);
+        } else if (type === "elbow") {
+          Plotly.newPlot("chart", [
             {
-              x: d.countries,
-              y: d.country_counts,
+              x: d.x,
+              y: d.y,
+              mode: "lines+markers",
+              line: { color: "#ff6600" },
+            },
+          ]);
+        } else if (type === "countries") {
+          Plotly.newPlot("chart", [
+            {
+              x: d.x,
+              y: d.y,
               type: "bar",
-              marker: { color: "#2c3e50" },
+              marker: { color: d.y, colorscale: "Blues" },
             },
-          ],
-          { title: "Ventas por País" }
-        );
-
-        // Método del Codo
-        Plotly.newPlot(
-          "elbow-chart",
-          [
+          ]);
+        } else if (type === "product") {
+          Plotly.newPlot("chart", [
             {
-              x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-              y: d.wcss,
-              type: "scatter",
-              mode: "lines+markers",
-              marker: { color: "#ff6600" },
+              x: d.x,
+              y: d.y,
+              type: "bar",
+              marker: { color: d.color, colorscale: "Turbo" },
             },
-          ],
-          { title: "Método del Codo" }
-        );
-
-        Plotly.newPlot(
-          "corr-matrix",
-          [
+          ]);
+        } else if (type === "corr") {
+          Plotly.newPlot("chart", [
             {
-              z: d.corr,
-              x: d.corr_labels,
-              y: d.corr_labels,
+              z: d.z,
+              x: d.labels,
+              y: d.labels,
               type: "heatmap",
               colorscale: "YlGnBu",
             },
-          ],
-          { title: "Matriz de Correlación" }
-        );
+          ]);
+        } else if (type === "scatter") {
+          Plotly.newPlot("chart", [
+            {
+              type: "splom",
+              dimensions: Object.keys(d).map((k) => ({
+                label: k,
+                values: d[k],
+              })),
+              marker: { color: "purple" },
+            },
+          ]);
+        
+        } else if (type === "dataset") {
+          document.getElementById("chart").innerHTML = "";
+          let html = "<table><tr>";
+          Object.keys(d[0]).forEach((k) => (html += `<th>${k}</th>`));
+          html += "</tr>";
 
-        // Tabla
-        let h = "<table><thead><tr>";
-        Object.keys(d.table[0]).forEach((k) => (h += `<th>${k}</th>`));
-        h += "</tr></thead><tbody>";
-        d.table.forEach((r) => {
-          h += "<tr>";
-          Object.values(r).forEach((v) => (h += `<td>${v}</td>`));
-          h += "</tr>";
-        });
-        h += "</tbody></table>";
-        document.getElementById("dataset-table").innerHTML = h;
+          d.forEach((r) => {
+            html += "<tr>";
+            Object.values(r).forEach((v) => (html += `<td>${v}</td>`));
+            html += "</tr>";
+          });
+
+          html += "</table>";
+          document.getElementById("table").innerHTML = html;
+        }
       }
     </script>
   </body>
